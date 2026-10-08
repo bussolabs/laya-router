@@ -1,5 +1,7 @@
 # laya-router
 
+[![npm](https://img.shields.io/npm/v/@bussolabs/laya-router)](https://www.npmjs.com/package/@bussolabs/laya-router)
+
 Automatic per-turn model routing for Claude Code and OpenAI Codex, decided by
 [Laya](https://github.com/NandhaKishorM/laya), the open-source, Jev-compatible System One
 decision model. Simple work goes to the fast tier, hard work to the strong tier, and each CLI
@@ -74,6 +76,8 @@ supported CLI:
 ```bash
 npm install -g @bussolabs/laya-router
 ```
+
+Package: [@bussolabs/laya-router on npm](https://www.npmjs.com/package/@bussolabs/laya-router).
 
 Or from a local checkout:
 
