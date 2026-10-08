@@ -72,7 +72,13 @@ supported CLI:
 [OpenAI Codex](https://developers.openai.com/codex/cli).
 
 ```bash
-git clone <this repository> laya-router
+npm install -g @bussolabs/laya-router
+```
+
+Or from a local checkout:
+
+```bash
+git clone https://github.com/bussolabs/laya-router.git
 cd laya-router
 npm install
 npm link

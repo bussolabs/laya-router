@@ -1,6 +1,6 @@
 {
-  "name": "laya-router",
-  "version": "0.3.0",
+  "name": "@bussolabs/laya-router",
+  "version": "0.1.0",
   "description": "Runs coding CLIs and routes each turn to the cheapest sufficient model using Laya, locally or on a laya-serve server",
   "repository": {
     "type": "git",
@@ -40,8 +40,7 @@
     "node": ">=20.12"
   },
   "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org"
+    "access": "public"
   },
   "license": "MIT"
 }
