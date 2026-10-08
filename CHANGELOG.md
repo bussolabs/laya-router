@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.1] - 2026-10-08
 
 - **Routing works with hooks that add output.** Turns followed by hook output or the environment block are routed again instead of staying on the default model. [#58](https://github.com/gargpratyush/jev-router/issues/58), [#48](https://github.com/gargpratyush/jev-router/issues/48), [#28](https://github.com/gargpratyush/jev-router/issues/28), [#18](https://github.com/gargpratyush/jev-router/issues/18)
 - **The first turn can start on a cheaper model.** A large opening message no longer blocks the downgrade on the first turn, when there is no cache to lose yet. [#59](https://github.com/gargpratyush/jev-router/issues/59)

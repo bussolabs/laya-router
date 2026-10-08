@@ -1,6 +1,6 @@
 {
   "name": "@bussolabs/laya-router",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Runs coding CLIs and routes each turn to the cheapest sufficient model using Laya, locally or on a laya-serve server",
   "repository": {
     "type": "git",
