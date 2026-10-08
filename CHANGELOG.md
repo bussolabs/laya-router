@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.2] - 2026-10-08
+
+- **The local server warms up before it reports ready.** A fresh server's first request no longer runs past the routing deadline or stalls a compaction.
+- **Correct first-start download size.** The README now says about 2 GB: Python packages with PyTorch plus the ~650 MB model.
+- **Documented Claude Code's model warning.** The README explains the `unrecognized_model` notice and the estimated cost report, and that only one router should run per session.
+
 ## [0.1.1] - 2026-10-08
 
 - **Routing works with hooks that add output.** Turns followed by hook output or the environment block are routed again instead of staying on the default model. [#58](https://github.com/gargpratyush/jev-router/issues/58), [#48](https://github.com/gargpratyush/jev-router/issues/48), [#28](https://github.com/gargpratyush/jev-router/issues/28), [#18](https://github.com/gargpratyush/jev-router/issues/18)

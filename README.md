@@ -36,8 +36,9 @@ uv tool run --python 3.12 --from "laya[serve]==0.4.0" python serve/laya_serve.py
 ```
 
 - **Needs uv.** Without it, local mode reports a clear error and turns keep the current model.
-- **First start** downloads the Python dependencies and about 1.3 GB of weights; until the
-  server answers, turns keep the current model. Later starts take seconds.
+- **First start** downloads about 2 GB (Python packages with PyTorch ~1.4 GB, weights ~650 MB)
+  and warms the model up before it reports ready; until then, turns keep the current model.
+  Later starts take seconds.
 - **Memory:** about 1.5 GB while the model is loaded. After 15 minutes without requests the
   model is unloaded; the next request loads it again.
 - **The server keeps running** after the CLI exits, and is shared with every other
@@ -232,6 +233,12 @@ node bin/laya-claude.mjs -p "what is 2+2?"
 - Laya adds latency only to the first request of a turn; tool-loop continuations add none.
 - Claude Code and Codex request formats are not public contracts. Use `LAYA_DUMP` to diagnose
   upstream changes.
+- Claude Code does not know the `laya-router` model name: in print mode it writes
+  `[claude-code:unrecognized_model]` to stderr, and its usage and cost report is keyed by
+  `laya-router`, so the cost it shows is an estimate. The real model is in the status line
+  and in `/laya-explain`; billing follows the model that actually served the request.
+- Run one router at a time: if `jev-router` is also installed, use either `jev-claude` or
+  `laya-claude`, not both against the same session.
 - Routing quality depends on the checkpoint: the base models are generic, so fine-tuning on
   your own routing decisions is recommended.
 
