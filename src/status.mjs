@@ -43,6 +43,19 @@ export function writeDecision(sessionId, decision) {
   writeStatus(sessionId, { ...decision, history });
 }
 
+/**
+ * Writes `name` into the private status directory, readable only by its owner, and returns
+ * its path. Used for the `--settings` file handed to Claude Code: it names the command Claude
+ * Code runs for its status line, so on a shared /tmp nobody else may rewrite it.
+ */
+export function writePrivate(name, content) {
+  ensureDir();
+  const file = join(DIR, name);
+  writeFileSync(file, content, { mode: FILE_MODE });
+  chmodSync(file, FILE_MODE);
+  return file;
+}
+
 /** Latest routing decision for a session, or null if none has been made yet. */
 export function readStatus(sessionId) {
   try {

@@ -27,10 +27,11 @@ export function loadEnv() {
   }
 }
 
-export function resolveCodex() {
-  const win = process.platform === "win32";
-  const exts = win ? [".exe", ".ps1", ".cmd", ".bat"] : [""];
-  for (const dir of (process.env.PATH ?? "").split(win ? ";" : ":")) {
+export function resolveCodex({ platform = process.platform, path = process.env.PATH ?? "" } = {}) {
+  const win = platform === "win32";
+  // The PowerShell shim last: run through powershell.exe it can hang where codex.cmd does not.
+  const exts = win ? [".exe", ".cmd", ".bat", ".ps1"] : [""];
+  for (const dir of path.split(win ? ";" : ":")) {
     if (!dir) continue;
     for (const ext of exts) {
       const file = join(dir.replace(/^"|"$/g, ""), `codex${ext}`);

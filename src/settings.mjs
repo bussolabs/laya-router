@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { AUTO_MODEL } from "./config.mjs";
@@ -22,7 +22,8 @@ export function readSavedModel(file = USER_SETTINGS) {
  * Puts `previous` back if the settings file now holds the sentinel. Selecting a row with
  * Enter makes Claude Code save it as the default for new sessions, and a saved "laya-router"
  * would break plain `claude`, which has no proxy to resolve it. Anything other than an exact
- * sentinel match is left alone, so a real model chosen during the session survives.
+ * sentinel match is left alone, so a real model chosen during the session survives. The file
+ * is replaced by a rename, never truncated in place, and keeps its own permissions.
  */
 export function restoreSavedModel(previous, file = USER_SETTINGS) {
   try {
@@ -30,7 +31,9 @@ export function restoreSavedModel(previous, file = USER_SETTINGS) {
     if (settings.model !== AUTO_MODEL) return false;
     if (previous === undefined) delete settings.model;
     else settings.model = previous;
-    writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+    const temp = `${file}.${process.pid}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(settings, null, 2)}\n`, { mode: statSync(file).mode & 0o777 });
+    renameSync(temp, file);
     return true;
   } catch {
     return false;

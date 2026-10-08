@@ -7,6 +7,7 @@ import { askLaya } from "./router.mjs";
 import { decide } from "./policy.mjs";
 import { log } from "./log.mjs";
 import { writeDecision, writeStatus } from "./status.mjs";
+import { isForeignRequest } from "./loopback.mjs";
 
 const CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/codex";
 const API_BASE_URL = "https://api.openai.com/v1";
@@ -35,9 +36,13 @@ export function codexTierOf(model) {
   return /^gpt-/i.test(model ?? "") ? "sonnet" : null;
 }
 
-/** Exact GPT models in Codex's account catalog; configured ids are the cold-start fallback. */
+/**
+ * One GPT model per tier from Codex's account catalog, preferring the configured one;
+ * configured ids are the cold-start fallback. Several models of one tier would split Laya's
+ * probability between them and keep its confidence too low to ever downgrade.
+ */
 export function codexModels(models = new Map()) {
-  const available = [...models.values()]
+  const catalog = [...models.values()]
     .filter((model) => model.slug !== CODEX_AUTO_MODEL && model.supported_in_api !== false)
     .map((model) => ({
       id: model.slug,
@@ -49,6 +54,11 @@ export function codexModels(models = new Map()) {
       ].filter(Boolean).join("; "),
     }))
     .filter((model) => model.tier);
+  const byTier = {};
+  for (const model of catalog) {
+    if (!byTier[model.tier] || model.id === codexModelOf(model.tier)) byTier[model.tier] = model;
+  }
+  const available = Object.values(byTier);
   return available.length
     ? available
     : Object.keys(DEFAULT_MODELS).map((tier) => ({
@@ -173,7 +183,9 @@ export async function startCodexProxy({
   const states = new Map();
   const models = new Map();
 
+  let port;
   const server = http.createServer((req, res) => {
+    if (isForeignRequest(req.headers, port)) return res.writeHead(403).end();
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", async () => {
@@ -283,24 +295,25 @@ export async function startCodexProxy({
             response.pipe(res);
             return;
           }
-          let pending = "";
+          // Kept as bytes: decoding chunk by chunk would corrupt a character split across two.
+          let pending = Buffer.alloc(0);
           let inspected = false;
           response.on("data", (chunk) => {
             if (inspected) return void res.write(chunk);
-            pending += chunk.toString();
+            pending = Buffer.concat([pending, chunk]);
             const end = pending.indexOf("\n\n");
             if (end < 0) return;
-            const first = pending.slice(0, end + 2);
+            const first = pending.subarray(0, end + 2);
             res.write(first);
-            const isSSE = /^(?:event|data):/m.test(first);
+            const isSSE = /^(?:event|data):/m.test(first.toString());
             if (isSSE) res.write(layaDecisionEvents(routing));
             debug(`codex decision display ${isSSE ? "inject" : "skip"}`);
-            res.write(pending.slice(end + 2));
-            pending = "";
+            res.write(pending.subarray(end + 2));
+            pending = Buffer.alloc(0);
             inspected = true;
           });
           response.on("end", () => {
-            if (pending) {
+            if (pending.length) {
               debug("codex decision display skip");
               res.write(pending);
             }
@@ -319,5 +332,13 @@ export async function startCodexProxy({
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { port: server.address().port, close: () => server.close() };
+  port = server.address().port;
+  return {
+    port,
+    close: () => {
+      server.close();
+      // An open keep-alive or streaming connection would otherwise keep laya-codex alive.
+      server.closeAllConnections();
+    },
+  };
 }

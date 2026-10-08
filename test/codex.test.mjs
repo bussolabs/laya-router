@@ -16,7 +16,7 @@ import {
   upstreamFor,
 } from "../src/codex-proxy.mjs";
 import { codexArgs, installCodexSkill } from "../src/codex-cli.mjs";
-import { readStatus } from "../src/status.mjs";
+import { readStatus, STATUS_DIR } from "../src/status.mjs";
 
 test("Codex uses a temporary authenticated Laya provider", () => {
   const args = codexArgs("http://127.0.0.1:1234", ["--sandbox", "read-only"]);
@@ -177,7 +177,9 @@ test("proxy preserves Codex auth, picker, routing, and native decision output", 
   await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
   t.after(() => upstream.close());
   const upstreamURL = `http://127.0.0.1:${upstream.address().port}`;
-  const statusId = `codex-test-${process.pid}`;
+  // History is appended to whatever file exists, so the id must be unique to this run.
+  const statusId = `codex-test-${process.pid}-${Date.now()}`;
+  t.after(() => rmSync(join(STATUS_DIR, `${statusId}.json`), { force: true }));
   let routeCalls = 0;
   const { port, close } = await startCodexProxy({
     chatgptBaseURL: `${upstreamURL}/backend-api/codex`,

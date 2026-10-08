@@ -172,10 +172,12 @@ forward pass. The architecture diagram is in
 
 `src/policy.mjs` then applies these rules:
 
-- explicit requests such as `use opus`, `use luna`, or `use strong` win;
+- a turn that is exactly an explicit request such as `use opus`, `use luna`, or `use strong`
+  wins; the phrase inside a longer prompt does nothing;
 - failure, timeout, or an unrecognised Laya answer keeps the current model;
 - low confidence never downgrades and caps upgrades at the balanced tier;
 - large conversations refuse downgrades that would waste more prompt-cache work than they save;
+- models whose context window cannot hold the request are not offered;
 - unavailable tiers step upward rather than silently choosing a weaker model;
 - the long tier is disabled unless `LAYA_ALLOW_FABLE=1`.
 

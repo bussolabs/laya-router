@@ -24,7 +24,7 @@ test("follows a confident Laya answer", () => {
 });
 
 test("an explicit user override beats Laya", () => {
-  const out = decide({ ...base, prompt: "use haiku to fix this typo", laya: sure("opus") });
+  const out = decide({ ...base, prompt: "use haiku", laya: sure("opus") });
   assert.equal(out.tier, "haiku");
   assert.equal(out.reason, "override");
 });

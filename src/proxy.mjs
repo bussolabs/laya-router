@@ -15,6 +15,7 @@ import { askLaya } from "./router.mjs";
 import { decide } from "./policy.mjs";
 import { log } from "./log.mjs";
 import { writeDecision, writeStatus } from "./status.mjs";
+import { isForeignRequest } from "./loopback.mjs";
 
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 const debug = (line) => process.env.LAYA_DEBUG && log(line);
@@ -51,10 +52,15 @@ export function sanitizeSchema(node) {
  * Laya on every tool call and let the model flip mid-task, so only the opening request of a
  * turn counts. Claude Code also injects `<system-reminder>` blocks into the user message,
  * which are noise to a router and measurably blunt Laya's confidence, so they are removed.
+ * Hook output and the environment block arrive as `system` messages after the user turn, so
+ * those trailers are skipped before reading it.
  */
 export function newTurnPrompt(body) {
   if (!Array.isArray(body?.tools) || body.tools.length === 0) return null; // auxiliary call
-  const last = body?.messages?.[body.messages.length - 1];
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  let i = messages.length - 1;
+  while (i >= 0 && messages[i]?.role === "system") i--;
+  const last = messages[i];
   if (!last || last.role !== "user") return null;
   let text;
   if (typeof last.content === "string") {
@@ -97,6 +103,26 @@ export function applyTier(body, tierName, model = idOf(tierName)) {
   return body;
 }
 
+// The API bills an image at most this many tokens, however large its base64 encoding.
+const IMAGE_TOKENS = 4784;
+
+/**
+ * Rough token count of a request part: characters / 4, except base64 images, which are
+ * counted at their billed cost rather than their encoded length. Documents are still counted
+ * by length, which overestimates them.
+ */
+export function estimateTokens(value) {
+  let images = 0;
+  const text = JSON.stringify(value ?? null, (key, node) => {
+    if (node?.type === "image" && node.source?.type === "base64") {
+      images++;
+      return null;
+    }
+    return node;
+  });
+  return Math.round(text.length / 4) + images * IMAGE_TOKENS;
+}
+
 /** Exact Claude models reported by the account, newest first; static ids are the cold-start fallback. */
 export function claudeModels(catalog = []) {
   const models = catalog
@@ -104,6 +130,7 @@ export function claudeModels(catalog = []) {
     .map((model) => ({
       id: model.id,
       tier: tierOf(model.id),
+      window: model.max_input_tokens ?? tierSpec(tierOf(model.id)).window,
       description: [
         model.display_name,
         model.created_at && `released ${model.created_at.slice(0, 10)}`,
@@ -112,7 +139,7 @@ export function claudeModels(catalog = []) {
     }));
   return models.length
     ? models
-    : TIERS.map((tier) => ({ id: tier.id, tier: tier.name, description: tier.id }));
+    : TIERS.map((tier) => ({ id: tier.id, tier: tier.name, window: tier.window, description: tier.id }));
 }
 
 const modelForTier = (models, tier) => models.find((model) => model.tier === tier)?.id ?? idOf(tier);
@@ -181,7 +208,9 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
     return s;
   };
 
+  let port;
   const server = http.createServer((req, res) => {
+    if (isForeignRequest(req.headers, port)) return res.writeHead(403).end();
     // Claude Code probes the base URL before its first request.
     if (req.method === "HEAD") return res.writeHead(200).end();
 
@@ -218,12 +247,18 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
             const explaining = prompt?.includes("<laya-explain>");
             let fresh = null;
             if (prompt && !explaining) {
-              const models = claudeModels([...catalog.values()]).filter((model) =>
+              const accountModels = claudeModels([...catalog.values()]).filter((model) =>
                 availableTiers().includes(model.tier),
               );
+              // A model whose window cannot hold the whole request (system prompt and tool
+              // schemas included) would answer 400, so it is not a choice; the policy then
+              // steps up from a current tier that no longer fits.
+              const requestTokens = estimateTokens([body.system, body.tools, body.messages]);
+              const fitting = accountModels.filter((model) => model.window >= requestTokens);
+              const models = fitting.length ? fitting : accountModels;
               const available = [...new Set(models.map((model) => model.tier))];
               const currentModel = state.model ?? modelForTier(models, current);
-              const contextTokens = Math.round(JSON.stringify(body.messages).length / 4);
+              const contextTokens = estimateTokens(body.messages);
               const laya = await route({ prompt, current: currentModel, contextTokens, models });
               const chosen = models.find((model) => model.id === laya?.choice);
               const tierAnswer = laya && { ...laya, choice: chosen?.tier };
@@ -232,7 +267,9 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
                 laya: tierAnswer,
                 current,
                 available,
-                contextTokens,
+                // No tier routed yet means no prompt cache built for this conversation, so the
+                // first turn has nothing to rebuild and may downgrade freely.
+                contextTokens: state.tier ? contextTokens : 0,
               });
               const model =
                 shouldUseExactModel(reason, chosen?.tier, tier)
@@ -344,5 +381,13 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { port: server.address().port, close: () => server.close() };
+  port = server.address().port;
+  return {
+    port,
+    close: () => {
+      server.close();
+      // An open keep-alive or streaming connection would otherwise keep the process alive.
+      server.closeAllConnections();
+    },
+  };
 }

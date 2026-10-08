@@ -23,7 +23,7 @@ test("the sentinel is not mistaken for a real tier", () => {
 });
 import { tierOf, isAuto } from "../src/config.mjs";
 import { writeDecision, writeStatus, readStatus, pruneStale, STATUS_DIR } from "../src/status.mjs";
-import { mkdirSync, statSync, utimesSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, utimesSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 test("reads the session id out of Claude Code's metadata", () => {
@@ -34,7 +34,7 @@ test("reads the session id out of Claude Code's metadata", () => {
 });
 
 test("status round-trips per session and misses cleanly", () => {
-  const sid = `test-${process.pid}`;
+  const sid = `test-${process.pid}-${Date.now()}`;
   writeStatus(sid, { tier: "opus", confidence: 0.87, reason: "laya" });
   assert.deepEqual(readStatus(sid), { tier: "opus", confidence: 0.87, reason: "laya" });
   assert.equal(readStatus("no-such-session"), null);
@@ -42,7 +42,7 @@ test("status round-trips per session and misses cleanly", () => {
 });
 
 test("status files are private to their owner", { skip: process.platform === "win32" }, () => {
-  const sid = `perm-${process.pid}`;
+  const sid = `perm-${process.pid}-${Date.now()}`;
   writeStatus(sid, { tier: "opus" });
   assert.equal(statSync(STATUS_DIR).mode & 0o777, 0o700);
   assert.equal(statSync(join(STATUS_DIR, `${sid}.json`)).mode & 0o777, 0o600);
@@ -61,8 +61,10 @@ test("stale status files are pruned and fresh ones kept", () => {
   assert.equal(existsSync(fresh), true);
 });
 
-test("routing status retains the exact recent Laya exchanges", () => {
-  const sid = `history-${process.pid}`;
+test("routing status retains the exact recent Laya exchanges", (t) => {
+  // History is appended to whatever file exists, so the id must be unique to this run.
+  const sid = `history-${process.pid}-${Date.now()}`;
+  t.after(() => rmSync(join(STATUS_DIR, `${sid}.json`), { force: true }));
   writeDecision(sid, { prompt: "first", laya: { request: { id: 1 }, response: { confidence: 0.6 } } });
   writeDecision(sid, { prompt: "second", laya: { request: { id: 2 }, response: { confidence: 0.8 } } });
   const status = readStatus(sid);

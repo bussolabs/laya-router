@@ -15,7 +15,7 @@
     "laya-explain": "bin/laya-explain.mjs"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "node --test test/*.test.mjs",
     "prepublishOnly": "npm test",
     "tuning:validate": "node tuning/validate.mjs",
     "tuning:questions": "node tuning/export-questions.mjs"

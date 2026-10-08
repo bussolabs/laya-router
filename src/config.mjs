@@ -15,13 +15,14 @@ const choice = (instructions, criteria) => ({
  * substring used to recognise whatever model Claude Code asked for, which may be an older
  * version within the same tier such as `claude-sonnet-4-6`. The capability flags come from
  * the Agent SDK's model catalogue: Haiku supports neither adaptive thinking nor effort, so
- * those fields have to be stripped when routing down to it.
+ * those fields have to be stripped when routing down to it. `window` is the input context
+ * window, used when the account's catalogue does not report `max_input_tokens`.
  */
 export const TIERS = [
-  { name: "haiku", id: "claude-haiku-4-5-20251001", family: "haiku", thinking: false, effort: false },
-  { name: "sonnet", id: "claude-sonnet-5", family: "sonnet", thinking: true, effort: true },
-  { name: "opus", id: "claude-opus-5", family: "opus", thinking: true, effort: true },
-  { name: "fable", id: "claude-fable-5-1", family: "fable", thinking: true, effort: true },
+  { name: "haiku", id: "claude-haiku-4-5-20251001", family: "haiku", thinking: false, effort: false, window: 200000 },
+  { name: "sonnet", id: "claude-sonnet-5", family: "sonnet", thinking: true, effort: true, window: 1000000 },
+  { name: "opus", id: "claude-opus-5", family: "opus", thinking: true, effort: true, window: 1000000 },
+  { name: "fable", id: "claude-fable-5-1", family: "fable", thinking: true, effort: true, window: 1000000 },
 ];
 
 export const TIER_NAMES = TIERS.map((t) => t.name);
@@ -76,7 +77,8 @@ export const THRESHOLDS = {
   layaMaxRetries: 1,
 };
 
-export const CONTEXT_WINDOW_TOKENS = 200000;
+/** Largest tier window: the scale of the context-size metric, so it does not saturate early. */
+export const CONTEXT_WINDOW_TOKENS = 1000000;
 
 const COMPLEXITY_SCALE = [
   "None",
@@ -93,16 +95,20 @@ const COMPLEXITY_SCALE = [
 
 export const COMPLEXITY_MAX_SCORE = COMPLEXITY_SCALE.length - 1;
 
-/** Phrases that mean "the human already decided", checked against the raw prompt. */
+/**
+ * Phrases that mean "the human already decided". The phrase must be the whole prompt: a turn
+ * can carry text the user only quoted or the agent read in, and "deal with strong typing"
+ * must not mean Opus.
+ */
 export const OVERRIDE_PATTERNS = TIERS.map((t) => ({
   tier: t.name,
   re: new RegExp(
-    `\\b(?:use|switch to|with|on)\\s+(?:${{
+    `^\\s*(?:use|switch to|with|on)\\s+(?:${{
       haiku: "haiku|fast|luna",
       sonnet: "sonnet|balanced|terra",
       opus: "opus|strong|sol",
       fable: "fable|long|astra",
-    }[t.name]})\\b`,
+    }[t.name]})\\s*$`,
     "i",
   ),
 }));
