@@ -1,0 +1,59 @@
+{
+  "task_complexity": {
+    "type": "score",
+    "instructions": "How complex is the coding task overall, including ambiguity, scope, and blast radius?",
+    "criteria": [
+      "None",
+      "Very low",
+      "Low",
+      "Some",
+      "Moderate",
+      "Moderate to high",
+      "High",
+      "Very high",
+      "Severe",
+      "Extreme"
+    ]
+  },
+  "reasoning_required": {
+    "type": "score",
+    "instructions": "How much reasoning is required to complete the request correctly in one pass?",
+    "criteria": [
+      "None",
+      "Very low",
+      "Low",
+      "Some",
+      "Moderate",
+      "Moderate to high",
+      "High",
+      "Very high",
+      "Severe",
+      "Extreme"
+    ]
+  },
+  "tool_complexity": {
+    "type": "score",
+    "instructions": "How complex is the tool use required, from no tools to many coordinated or stateful operations?",
+    "criteria": [
+      "None",
+      "Very low",
+      "Low",
+      "Some",
+      "Moderate",
+      "Moderate to high",
+      "High",
+      "Very high",
+      "Severe",
+      "Extreme"
+    ]
+  },
+  "model": {
+    "type": "choice",
+    "instructions": "Pick the cheapest exact model that can fully complete this coding request in one pass, without retrying on a stronger model. Treat different model versions as separate choices. Judge required reasoning, not requested reply length.",
+    "criteria": {
+      "claude-haiku-4-5-20251001": "claude-haiku-4-5-20251001. Trivial, mechanical, or purely factual work. Not for: Design judgement or multi-file reasoning.",
+      "claude-sonnet-5": "claude-sonnet-5. Ordinary day-to-day engineering with a clear, bounded shape. Not for: Open-ended architecture, subtle concurrency, or unknown-cause debugging.",
+      "claude-opus-5": "claude-opus-5. Hard reasoning, ambiguity, or high blast radius. Not for: Routine work with a clear implementation."
+    }
+  }
+}

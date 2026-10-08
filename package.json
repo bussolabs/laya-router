@@ -1,27 +1,30 @@
 {
-  "name": "jev-router",
+  "name": "laya-router",
   "version": "0.3.0",
-  "description": "Runs coding CLIs and routes each turn to the cheapest sufficient model using TypeSafe Jev",
-  "type": "module",
+  "description": "Runs coding CLIs and routes each turn to the cheapest sufficient model using Laya, locally or on a laya-serve server",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gargpratyush/jev-router.git"
+    "url": "git+https://github.com/bussolabs/laya-router.git"
   },
-  "homepage": "https://github.com/gargpratyush/jev-router#readme",
-  "bugs": "https://github.com/gargpratyush/jev-router/issues",
+  "homepage": "https://github.com/bussolabs/laya-router#readme",
+  "bugs": "https://github.com/bussolabs/laya-router/issues",
+  "type": "module",
   "bin": {
-    "jev-claude": "bin/jev-claude.mjs",
-    "jev-codex": "bin/jev-codex.mjs",
-    "jev-explain": "bin/jev-explain.mjs"
+    "laya-claude": "bin/laya-claude.mjs",
+    "laya-codex": "bin/laya-codex.mjs",
+    "laya-explain": "bin/laya-explain.mjs"
   },
   "scripts": {
     "test": "node --test \"test/**/*.test.mjs\"",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "tuning:validate": "node tuning/validate.mjs",
+    "tuning:questions": "node tuning/export-questions.mjs"
   },
   "files": [
     ".claude/skills",
     "bin",
     "skills",
+    "serve",
     "src",
     "README.md"
   ],
@@ -30,8 +33,8 @@
     "claude-code",
     "codex",
     "model-routing",
-    "jev",
-    "typesafe"
+    "laya",
+    "jev"
   ],
   "engines": {
     "node": ">=20.12"
@@ -40,8 +43,5 @@
     "access": "public",
     "registry": "https://registry.npmjs.org"
   },
-  "license": "MIT",
-  "dependencies": {
-    "@typesafe-ai/sdk": "^0.6.0"
-  }
+  "license": "MIT"
 }

@@ -3,14 +3,14 @@ import https from "node:https";
 import { createHash, randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { availableTiers, shouldUseExactModel } from "./config.mjs";
-import { askJev } from "./router.mjs";
+import { askLaya } from "./router.mjs";
 import { decide } from "./policy.mjs";
 import { log } from "./log.mjs";
 import { writeDecision, writeStatus } from "./status.mjs";
 
 const CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/codex";
 const API_BASE_URL = "https://api.openai.com/v1";
-export const CODEX_AUTO_MODEL = "jev-router";
+export const CODEX_AUTO_MODEL = "laya-router";
 const DEFAULT_MODELS = {
   haiku: "gpt-5.6-luna",
   sonnet: "gpt-5.6-terra",
@@ -18,10 +18,10 @@ const DEFAULT_MODELS = {
   fable: "gpt-6-astra",
 };
 const MODEL_ENV = {
-  haiku: "JEV_CODEX_FAST_MODEL",
-  sonnet: "JEV_CODEX_BALANCED_MODEL",
-  opus: "JEV_CODEX_STRONG_MODEL",
-  fable: "JEV_CODEX_LONG_MODEL",
+  haiku: "LAYA_CODEX_FAST_MODEL",
+  sonnet: "LAYA_CODEX_BALANCED_MODEL",
+  opus: "LAYA_CODEX_STRONG_MODEL",
+  fable: "LAYA_CODEX_LONG_MODEL",
 };
 
 export const codexModelOf = (tier) => process.env[MODEL_ENV[tier]] ?? DEFAULT_MODELS[tier];
@@ -101,7 +101,7 @@ export function codexConversationKey(body) {
   return createHash("sha1").update(String(stable)).digest("hex").slice(0, 12);
 }
 
-export function addJevModel(catalog) {
+export function addLayaModel(catalog) {
   if (!Array.isArray(catalog?.models) || catalog.models.some((model) => model.slug === CODEX_AUTO_MODEL)) {
     return catalog;
   }
@@ -113,8 +113,8 @@ export function addJevModel(catalog) {
   catalog.models.unshift({
     ...template,
     slug: CODEX_AUTO_MODEL,
-    display_name: "Jev Router",
-    description: "Jev picks the cheapest model that can complete each turn.",
+    display_name: "Laya Router",
+    description: "Laya picks the cheapest model that can complete each turn.",
     visibility: "list",
     supported_in_api: true,
     priority: 0,
@@ -140,12 +140,12 @@ export const upstreamFor = (
   apiBaseURL = API_BASE_URL,
 ) => /\/models(?:\?|$)/.test(path) || headers["chatgpt-account-id"] ? chatgptBaseURL : apiBaseURL;
 
-export function jevDecisionEvents({ tier, model = codexModelOf(tier), confidence, reason }) {
+export function layaDecisionEvents({ tier, model = codexModelOf(tier), confidence, reason }) {
   const detail = confidence == null ? reason : `${reason}, confidence ${confidence.toFixed(2)}`;
-  const id = `jev-${randomUUID()}`;
-  const text = reason.startsWith("jev-unavailable")
-    ? `[Jev] unavailable; using ${model}. Add JEV_API_KEY=... to ~/.jev-router.env and restart jev-codex.`
-    : `[Jev] routed this turn to ${model} (${detail}).`;
+  const id = `laya-${randomUUID()}`;
+  const text = reason.startsWith("laya-unavailable")
+    ? `[Laya] unavailable; using ${model}. Check LAYA_URL or LAYA_MODEL_DIR in ~/.laya-router.env and restart laya-codex.`
+    : `[Laya] routed this turn to ${model} (${detail}).`;
   const item = {
     type: "message",
     role: "assistant",
@@ -161,13 +161,13 @@ export function jevDecisionEvents({ tier, model = codexModelOf(tier), confidence
   return events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join("");
 }
 
-const debug = (line) => process.env.JEV_DEBUG && log(line);
+const debug = (line) => process.env.LAYA_DEBUG && log(line);
 const upstreamPath = (base, path) => `${new URL(base).pathname.replace(/\/$/, "")}${path}`;
 
 export async function startCodexProxy({
   chatgptBaseURL = CHATGPT_BASE_URL,
   apiBaseURL = API_BASE_URL,
-  route = askJev,
+  route = askLaya,
   statusId = "",
 } = {}) {
   const states = new Map();
@@ -182,8 +182,8 @@ export async function startCodexProxy({
       if (req.method === "POST" && /\/responses(?:\?|$)/.test(req.url ?? "")) {
         try {
           const body = JSON.parse(out.toString());
-          if (process.env.JEV_DUMP) {
-            writeFileSync(`${process.env.JEV_DUMP}.${Date.now()}.json`, JSON.stringify(body, null, 2));
+          if (process.env.LAYA_DUMP) {
+            writeFileSync(`${process.env.LAYA_DUMP}.${Date.now()}.json`, JSON.stringify(body, null, 2));
           }
           if (body.model === CODEX_AUTO_MODEL) {
             const key = codexConversationKey(body);
@@ -194,16 +194,16 @@ export async function startCodexProxy({
             const currentModel = states.get(key)?.model ?? modelForTier(candidates, "opus");
             const current = codexTierOf(currentModel) ?? "opus";
             const prompt = codexNewTurnPrompt(body);
-            const explaining = prompt?.includes("<jev-explain>") || /^\$jev-explain\b/i.test(prompt ?? "");
+            const explaining = prompt?.includes("<laya-explain>") || /^\$laya-explain\b/i.test(prompt ?? "");
             let tier = current;
             let model = currentModel;
             if (prompt && !explaining) {
               const contextTokens = Math.round(JSON.stringify(body.input).length / 4);
-              const jev = await route({ prompt, current: currentModel, contextTokens, models: candidates });
-              const chosen = candidates.find((candidate) => candidate.id === jev?.choice);
+              const laya = await route({ prompt, current: currentModel, contextTokens, models: candidates });
+              const chosen = candidates.find((candidate) => candidate.id === laya?.choice);
               const decision = decide({
                 prompt,
-                jev: jev && { ...jev, choice: chosen?.tier },
+                laya: laya && { ...laya, choice: chosen?.tier },
                 current,
                 available,
                 contextTokens,
@@ -220,10 +220,10 @@ export async function startCodexProxy({
                 prompt,
                 tier,
                 model,
-                confidence: jev?.confidence ?? null,
-                metrics: jev?.metrics ?? null,
+                confidence: laya?.confidence ?? null,
+                metrics: laya?.metrics ?? null,
                 reason: decision.reason,
-                jev: jev ? { request: jev.request, response: jev.response } : null,
+                laya: laya ? { request: laya.request, response: laya.response } : null,
                 at: Date.now(),
               };
               writeDecision(statusId, routing);
@@ -232,7 +232,7 @@ export async function startCodexProxy({
             applyCodexTier(body, tier, models, model);
           } else {
             const prompt = codexNewTurnPrompt(body);
-            const explaining = prompt?.includes("<jev-explain>") || /^\$jev-explain\b/i.test(prompt ?? "");
+            const explaining = prompt?.includes("<laya-explain>") || /^\$laya-explain\b/i.test(prompt ?? "");
             if (prompt && !explaining) writeStatus(statusId, { manual: true, at: Date.now() });
           }
           out = Buffer.from(JSON.stringify(body));
@@ -263,7 +263,7 @@ export async function startCodexProxy({
             response.on("end", () => {
               let data = Buffer.concat(body);
               try {
-                const catalog = addJevModel(JSON.parse(data.toString()));
+                const catalog = addLayaModel(JSON.parse(data.toString()));
                 for (const model of catalog.models) models.set(model.slug, model);
                 data = Buffer.from(JSON.stringify(catalog));
                 delete responseHeaders["content-length"];
@@ -293,7 +293,7 @@ export async function startCodexProxy({
             const first = pending.slice(0, end + 2);
             res.write(first);
             const isSSE = /^(?:event|data):/m.test(first);
-            if (isSSE) res.write(jevDecisionEvents(routing));
+            if (isSSE) res.write(layaDecisionEvents(routing));
             debug(`codex decision display ${isSSE ? "inject" : "skip"}`);
             res.write(pending.slice(end + 2));
             pending = "";

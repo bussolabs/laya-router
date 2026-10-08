@@ -11,13 +11,13 @@ import {
   isAuto,
   shouldUseExactModel,
 } from "./config.mjs";
-import { askJev } from "./router.mjs";
+import { askLaya } from "./router.mjs";
 import { decide } from "./policy.mjs";
 import { log } from "./log.mjs";
 import { writeDecision, writeStatus } from "./status.mjs";
 
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
-const debug = (line) => process.env.JEV_DEBUG && log(line);
+const debug = (line) => process.env.LAYA_DEBUG && log(line);
 
 /**
  * Claude Code converts draft-04 relics in MCP tool schemas before sending them first-party,
@@ -48,9 +48,9 @@ export function sanitizeSchema(node) {
  *
  * A turn can continue for many requests while Claude works through tool calls, and those
  * continuations end in a `tool_result` rather than typed text. Routing them would re-ask
- * Jev on every tool call and let the model flip mid-task, so only the opening request of a
+ * Laya on every tool call and let the model flip mid-task, so only the opening request of a
  * turn counts. Claude Code also injects `<system-reminder>` blocks into the user message,
- * which are noise to a router and measurably blunt Jev's confidence, so they are removed.
+ * which are noise to a router and measurably blunt Laya's confidence, so they are removed.
  */
 export function newTurnPrompt(body) {
   if (!Array.isArray(body?.tools) || body.tools.length === 0) return null; // auxiliary call
@@ -167,7 +167,7 @@ export function observeModel(state, current) {
 }
 
 
-export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = askJev } = {}) {
+export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = askLaya } = {}) {
   // Tier routed for each conversation's turn in flight, reused by its follow-up requests and
   // by the cache-rebuild guard, which needs to know what the prompt cache was built on.
   const convos = new Map();
@@ -193,9 +193,9 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
       if (/^\/v1\/messages/.test(req.url ?? "")) {
         try {
           const body = JSON.parse(out.toString());
-          // Claude Code's request shape is undocumented and moves; JEV_DUMP captures it.
-          if (process.env.JEV_DUMP) {
-            writeFileSync(`${process.env.JEV_DUMP}.${Date.now()}.json`, JSON.stringify(body, null, 2));
+          // Claude Code's request shape is undocumented and moves; LAYA_DUMP captures it.
+          if (process.env.LAYA_DUMP) {
+            writeFileSync(`${process.env.LAYA_DUMP}.${Date.now()}.json`, JSON.stringify(body, null, 2));
           }
           body.tools?.forEach((t) => sanitizeSchema(t.input_schema));
 
@@ -215,7 +215,7 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
             // What the prompt cache was built on, which is what a downgrade would discard.
             const current = state.tier ?? "opus";
             const prompt = newTurnPrompt(body);
-            const explaining = prompt?.includes("<jev-explain>");
+            const explaining = prompt?.includes("<laya-explain>");
             let fresh = null;
             if (prompt && !explaining) {
               const models = claudeModels([...catalog.values()]).filter((model) =>
@@ -224,12 +224,12 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
               const available = [...new Set(models.map((model) => model.tier))];
               const currentModel = state.model ?? modelForTier(models, current);
               const contextTokens = Math.round(JSON.stringify(body.messages).length / 4);
-              const jev = await route({ prompt, current: currentModel, contextTokens, models });
-              const chosen = models.find((model) => model.id === jev?.choice);
-              const tierAnswer = jev && { ...jev, choice: chosen?.tier };
+              const laya = await route({ prompt, current: currentModel, contextTokens, models });
+              const chosen = models.find((model) => model.id === laya?.choice);
+              const tierAnswer = laya && { ...laya, choice: chosen?.tier };
               const { tier, reason } = decide({
                 prompt,
-                jev: tierAnswer,
+                laya: tierAnswer,
                 current,
                 available,
                 contextTokens,
@@ -245,13 +245,13 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
               fresh = {
                 prompt,
                 model,
-                confidence: jev?.confidence ?? null,
-                metrics: jev?.metrics ?? null,
+                confidence: laya?.confidence ?? null,
+                metrics: laya?.metrics ?? null,
                 reason,
-                jev: jev ? { request: jev.request, response: jev.response } : null,
+                laya: laya ? { request: laya.request, response: laya.response } : null,
               };
               debug(
-                `${key} ${jev ? `${jev.ms}ms p=${jev.confidence.toFixed(2)}` : "no-jev"} ` +
+                `${key} ${laya ? `${laya.ms}ms p=${laya.confidence.toFixed(2)}` : "no-laya"} ` +
                   `${current} -> ${tier} (${reason}) ctx~${contextTokens} | ${prompt.slice(0, 60)}`,
               );
             }
@@ -266,7 +266,7 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
             // `claude -p` omits metadata on the first request of a session, so there is no
             // session id to file the decision under and it would be dropped. The conversation
             // key is stable for the same conversation and is already what `debug` prints, so
-            // it is the identifier a user can pass to `jev-explain` for a print-mode run.
+            // it is the identifier a user can pass to `laya-explain` for a print-mode run.
             if (fresh && !explaining) {
               writeDecision(sessionOf(body) || key, { tier, ...fresh, at: Date.now() });
             }
@@ -284,9 +284,9 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
       if (req.method === "GET" && /^\/v1\/models(?:\?|$)/.test(req.url ?? "")) {
         delete headers["accept-encoding"];
       }
-      // Under JEV_DEBUG, ask for an uncompressed stream so the model the API reports can be
+      // Under LAYA_DEBUG, ask for an uncompressed stream so the model the API reports can be
       // read back out of it. Not worth the bandwidth cost in normal operation.
-      if (process.env.JEV_DEBUG) delete headers["accept-encoding"];
+      if (process.env.LAYA_DEBUG) delete headers["accept-encoding"];
       const upstream = transport.request(
         {
           hostname: target.hostname,
@@ -320,7 +320,7 @@ export async function startProxy({ upstreamURL = ANTHROPIC_BASE_URL, route = ask
           // Report the model the API itself says it used, so the routing can be confirmed
           // from the wire rather than trusted from our own decision log. Claude Code's UI
           // always shows the model it asked for, never the one we rewrote to.
-          if (process.env.JEV_DEBUG) {
+          if (process.env.LAYA_DEBUG) {
             let seen = false;
             up.on("data", (c) => {
               if (seen) return;

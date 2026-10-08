@@ -1,5 +1,14 @@
 // Every routing decision knob lives here, so the whole policy is reviewable in one file.
-import { choice, score } from "@typesafe-ai/sdk";
+
+// Question builders in the System One shape both Laya backends accept. Laya's choice options
+// are plain strings sharing a small token budget, and its instructions are read as text, so
+// both are flattened here rather than sent as nested objects.
+const score = (instructions, criteria) => ({ type: "score", instructions, criteria });
+const choice = (instructions, criteria) => ({
+  type: "choice",
+  instructions: [].concat(instructions).join(" "),
+  criteria,
+});
 
 /**
  * Model tiers, cheapest first. `id` is what goes into the API request body; `family` is the
@@ -29,7 +38,7 @@ export const tierSpec = (name) => TIERS.find((t) => t.name === name);
  * its presence in a request is an exact signal that the user wants this turn routed. Any
  * other model means the user picked one themselves and it must be passed straight through.
  */
-export const AUTO_MODEL = "jev-router";
+export const AUTO_MODEL = "laya-router";
 
 /** Whether a request should be routed, or passed through as the user's own choice. */
 export const isAuto = (model) => model === AUTO_MODEL;
@@ -43,12 +52,12 @@ export const tierOf = (model) =>
  * subscription.
  */
 export const availableTiers = () =>
-  TIER_NAMES.filter((n) => n !== "fable" || process.env.JEV_ALLOW_FABLE === "1");
+  TIER_NAMES.filter((n) => n !== "fable" || process.env.LAYA_ALLOW_FABLE === "1");
 
 export const THRESHOLDS = {
-  /** Below this Jev confidence we refuse to downgrade and cap upgrades at `uncertainCeiling`. */
+  /** Below this Laya confidence we refuse to downgrade and cap upgrades at `uncertainCeiling`. */
   minConfidence: 0.3,
-  /** Safest tier to land on when Jev is unsure. */
+  /** Safest tier to land on when Laya is unsure. */
   uncertainCeiling: "sonnet",
   /**
    * Switching models invalidates the prompt cache; the next turn re-sends the whole
@@ -57,13 +66,14 @@ export const THRESHOLDS = {
    */
   downgradeMaxContextTokens: 20000,
   /**
-   * Per-attempt Jev HTTP timeout and the hard wall-clock deadline for the whole routing
-   * call. Measured: ~300-350ms warm, ~900-1000ms on the first call (TLS handshake), so the
-   * deadline leaves room for one retry after a cold-start timeout.
+   * Per-attempt Laya timeout and the hard wall-clock deadline for the whole routing call.
+   * Upstream measured Jev at ~300-350ms warm and ~900-1000ms on the first call, so the
+   * deadline leaves room for one retry after a cold-start timeout. In local mode the first
+   * call also loads the model; it misses the deadline and routing resumes once it is ready.
    */
-  jevTimeoutMs: 1500,
-  jevDeadlineMs: 3000,
-  jevMaxRetries: 1,
+  layaTimeoutMs: 1500,
+  layaDeadlineMs: 3000,
+  layaMaxRetries: 1,
 };
 
 export const CONTEXT_WINDOW_TOKENS = 200000;
@@ -135,7 +145,7 @@ const GUIDANCE = {
   },
 };
 
-/** Build a Jev choice from the exact models available to this account and CLI. */
+/** Build a Laya choice from the exact models available to this account and CLI. */
 export const questionForModels = (models) =>
   choice(
     [
@@ -145,11 +155,15 @@ export const questionForModels = (models) =>
     Object.fromEntries(
       models.map(({ id, tier, description }) => [
         id,
-        { model: description ?? id, ...GUIDANCE[tier] },
+        // Only the display name of the catalogue description: every option shares Laya's
+        // option token budget, so release dates and context sizes are left out.
+        [`${(description ?? id).split(";")[0]}.`, GUIDANCE[tier]?.what, GUIDANCE[tier] && `Not for: ${GUIDANCE[tier].not_for}`]
+          .filter(Boolean)
+          .join(" "),
       ]),
     ),
   );
 
-/** Whether policy accepted Jev's exact model, including a version change within one tier. */
+/** Whether policy accepted Laya's exact model, including a version change within one tier. */
 export const shouldUseExactModel = (reason, chosenTier, finalTier) =>
-  (reason === "jev" || reason === "jev/no-change") && chosenTier === finalTier;
+  (reason === "laya" || reason === "laya/no-change") && chosenTier === finalTier;

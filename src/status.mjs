@@ -2,11 +2,11 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// One file per session rather than a shared map, so concurrent jev-claude sessions can never
+// One file per session rather than a shared map, so concurrent laya-claude sessions can never
 // clobber each other's status. Kept in the temp dir so the OS eventually cleans up.
-const DIR = join(tmpdir(), "jev-claude");
+const DIR = join(tmpdir(), "laya-claude");
 
-// Status files hold prompt text and exact Jev exchanges, so only the owner may read them.
+// Status files hold prompt text and exact Laya exchanges, so only the owner may read them.
 // On Linux the temp dir is the shared /tmp; macOS and Windows temp dirs are already per-user,
 // where these modes are harmless (Windows ignores them).
 const DIR_MODE = 0o700;
@@ -36,7 +36,7 @@ export function writeStatus(sessionId, status) {
   }
 }
 
-/** Publish a routed prompt and retain recent exact Jev exchanges for diagnosis. */
+/** Publish a routed prompt and retain recent exact Laya exchanges for diagnosis. */
 export function writeDecision(sessionId, decision) {
   const previous = readStatus(sessionId);
   const history = [...(previous?.history ?? []), decision].slice(-20);

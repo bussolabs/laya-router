@@ -4,24 +4,21 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODEX_AUTO_MODEL, startCodexProxy } from "./codex-proxy.mjs";
+import { warmUp } from "./router.mjs";
 
-const PROVIDER = "jev";
+const PROVIDER = "laya";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const EXPLAIN_SKILL = join(ROOT, "skills", "codex", "jev-explain", "SKILL.md");
+const EXPLAIN_SKILL = join(ROOT, "skills", "codex", "laya-explain", "SKILL.md");
 
 export function installCodexSkill(home = homedir()) {
-  const target = join(home, ".agents", "skills", "jev-router-explain", "SKILL.md");
+  const target = join(home, ".agents", "skills", "laya-router-explain", "SKILL.md");
   mkdirSync(dirname(target), { recursive: true });
   copyFileSync(EXPLAIN_SKILL, target);
   return target;
 }
 
 export function loadEnv() {
-  for (const file of [
-    join(process.cwd(), ".env"),
-    join(homedir(), ".jev-router.env"),
-    join(homedir(), ".jev-claude.env"),
-  ]) {
+  for (const file of [join(process.cwd(), ".env"), join(homedir(), ".laya-router.env")]) {
     try {
       process.loadEnvFile(file);
     } catch {
@@ -58,7 +55,7 @@ export const codexArgs = (baseURL, args) => [
   "--config",
   `model_provider="${PROVIDER}"`,
   "--config",
-  `model_providers.${PROVIDER}.name="Jev Router"`,
+  `model_providers.${PROVIDER}.name="Laya Router"`,
   "--config",
   `model_providers.${PROVIDER}.base_url="${baseURL}"`,
   "--config",
@@ -76,14 +73,14 @@ export async function runCodex() {
   try {
     installCodexSkill();
   } catch (err) {
-    process.stderr.write(`[jev] could not install the Codex explanation skill: ${err.message}\n`);
+    process.stderr.write(`[laya] could not install the Codex explanation skill: ${err.message}\n`);
   }
   const command = resolveCodex();
   if (!command) {
     process.stderr.write(
-      "[jev] OpenAI Codex is not installed, or `codex` is not on your PATH.\n" +
-        "[jev] jev-codex runs the real Codex CLI; install it first:\n" +
-        "[jev]   https://developers.openai.com/codex/cli\n",
+      "[laya] OpenAI Codex is not installed, or `codex` is not on your PATH.\n" +
+        "[laya] laya-codex runs the real Codex CLI; install it first:\n" +
+        "[laya]   https://developers.openai.com/codex/cli\n",
     );
     process.exitCode = 1;
     return;
@@ -92,17 +89,14 @@ export async function runCodex() {
   let args = process.argv.slice(2);
   let close = () => {};
   const statusId = `codex-${process.pid}`;
-  process.env.JEV_CODEX_STATUS_ID = statusId;
-  if (process.env.JEV_API_KEY || process.env.TYPESAFE_API_KEY) {
-    const proxy = await startCodexProxy({ statusId });
-    close = proxy.close;
-    args = codexArgs(`http://127.0.0.1:${proxy.port}`, args);
-  } else {
-    process.stderr.write(
-      "[jev] no JEV_API_KEY found - starting Codex without routing\n" +
-        `[jev] add JEV_API_KEY=... to ${join(homedir(), ".jev-router.env")} and restart jev-codex\n`,
-    );
-  }
+  process.env.LAYA_CODEX_STATUS_ID = statusId;
+  // Laya needs no key in local mode, so routing is always on.
+  const proxy = await startCodexProxy({ statusId });
+  // Starts the shared local Laya server now, so it is warm by the first prompt.
+  const warning = await warmUp();
+  if (warning) process.stderr.write(`[laya] ${warning}\n[laya] starting Codex; turns keep the current model\n`);
+  close = proxy.close;
+  args = codexArgs(`http://127.0.0.1:${proxy.port}`, args);
 
   const childArgs = [...command.prefix, ...args];
   const child = spawn(
@@ -112,7 +106,7 @@ export async function runCodex() {
   );
   child.on("error", (err) => {
     close();
-    process.stderr.write(`[jev] could not start Codex: ${err.message}\n`);
+    process.stderr.write(`[laya] could not start Codex: ${err.message}\n`);
     process.exitCode = 1;
   });
   child.on("exit", (code, signal) => {

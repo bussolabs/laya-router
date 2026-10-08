@@ -5,34 +5,34 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  addJevModel,
+  addLayaModel,
   applyCodexTier,
   codexConversationKey,
   codexModels,
   codexNewTurnPrompt,
   isCodexAuxiliaryPrompt,
-  jevDecisionEvents,
+  layaDecisionEvents,
   startCodexProxy,
   upstreamFor,
 } from "../src/codex-proxy.mjs";
 import { codexArgs, installCodexSkill } from "../src/codex-cli.mjs";
 import { readStatus } from "../src/status.mjs";
 
-test("Codex uses a temporary authenticated Jev provider", () => {
+test("Codex uses a temporary authenticated Laya provider", () => {
   const args = codexArgs("http://127.0.0.1:1234", ["--sandbox", "read-only"]);
-  assert.deepEqual(args.slice(0, 2), ["--model", "jev-router"]);
-  assert(args.includes('model_provider="jev"'));
-  assert(args.includes("model_providers.jev.requires_openai_auth=true"));
+  assert.deepEqual(args.slice(0, 2), ["--model", "laya-router"]);
+  assert(args.includes('model_provider="laya"'));
+  assert(args.includes("model_providers.laya.requires_openai_auth=true"));
   assert.deepEqual(args.slice(-2), ["--sandbox", "read-only"]);
   assert.equal(codexArgs("http://127.0.0.1:1234", ["--model", "gpt-5.6-sol"]).filter((a) => a === "--model").length, 1);
 });
 
 test("installs the bundled explanation skill for Codex", (t) => {
-  const home = mkdtempSync(join(tmpdir(), "jev-codex-skill-"));
+  const home = mkdtempSync(join(tmpdir(), "laya-codex-skill-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const target = installCodexSkill(home);
-  assert.match(target, /jev-router-explain[\\/]SKILL\.md$/);
-  assert.match(readFileSync(target, "utf8"), /name: jev-explain/);
+  assert.match(target, /laya-router-explain[\\/]SKILL\.md$/);
+  assert.match(readFileSync(target, "utf8"), /name: laya-explain/);
 });
 
 test("reads only fresh Codex user turns", () => {
@@ -74,8 +74,8 @@ test("keeps sub-agent routing state separate", () => {
   );
 });
 
-test("adds Jev Router to the native model catalog", () => {
-  const catalog = addJevModel({
+test("adds Laya Router to the native model catalog", () => {
+  const catalog = addLayaModel({
     models: [{
       slug: "gpt-5.6-terra",
       display_name: "GPT-5.6-Terra",
@@ -84,8 +84,8 @@ test("adds Jev Router to the native model catalog", () => {
       priority: 2,
     }],
   });
-  assert.equal(catalog.models[0].slug, "jev-router");
-  assert.equal(catalog.models[0].display_name, "Jev Router");
+  assert.equal(catalog.models[0].slug, "laya-router");
+  assert.equal(catalog.models[0].display_name, "Laya Router");
   assert.equal(catalog.models[1].slug, "gpt-5.6-terra");
 });
 
@@ -99,7 +99,7 @@ test("routes subscription auth to ChatGPT and API keys to the public API", () =>
 });
 
 test("maps tiers and clamps unsupported reasoning effort", () => {
-  const body = { model: "jev-router", reasoning: { effort: "max" } };
+  const body = { model: "laya-router", reasoning: { effort: "max" } };
   const models = new Map([[
     "gpt-5.6-luna",
     { default_reasoning_level: "medium", supported_reasoning_levels: [{ effort: "medium" }] },
@@ -109,7 +109,7 @@ test("maps tiers and clamps unsupported reasoning effort", () => {
   assert.equal(body.reasoning.effort, "medium");
 });
 
-test("sends exact available GPT models to Jev", () => {
+test("sends exact available GPT models to Laya", () => {
   const models = new Map([
     ["gpt-5.6-terra", { slug: "gpt-5.6-terra", display_name: "GPT-5.6-Terra" }],
     ["gpt-5.6-sol", { slug: "gpt-5.6-sol", display_name: "GPT-5.6-Sol" }],
@@ -121,20 +121,20 @@ test("sends exact available GPT models to Jev", () => {
 });
 
 test("surfaces routing as a native commentary event", () => {
-  const events = jevDecisionEvents({ tier: "opus", confidence: 0.91, reason: "jev" });
+  const events = layaDecisionEvents({ tier: "opus", confidence: 0.91, reason: "laya" });
   assert.match(events, /response\.output_item\.added/);
   assert.match(events, /response\.output_text\.delta/);
   assert.match(events, /response\.output_item\.done/);
   assert.match(events, /"phase":"commentary"/);
-  assert.match(events, /\[Jev\] routed this turn to gpt-5\.6-sol/);
+  assert.match(events, /\[Laya\] routed this turn to gpt-5\.6-sol/);
   assert.match(events, /confidence 0\.91/);
 
-  const unavailable = jevDecisionEvents({
+  const unavailable = layaDecisionEvents({
     tier: "sonnet",
     confidence: null,
-    reason: "jev-unavailable/no-change",
+    reason: "laya-unavailable/no-change",
   });
-  assert.match(unavailable, /JEV_API_KEY=\.\.\. to ~\/\.jev-router\.env/);
+  assert.match(unavailable, /LAYA_URL or LAYA_MODEL_DIR in ~\/\.laya-router\.env/);
   assert.match(unavailable, /using gpt-5\.6-terra/);
 });
 
@@ -204,13 +204,13 @@ test("proxy preserves Codex auth, picker, routing, and native decision output", 
   const headers = { authorization: "Bearer subscription-token", "chatgpt-account-id": "acct" };
 
   const catalog = await fetch(`http://127.0.0.1:${port}/models?client_version=1`, { headers }).then((r) => r.json());
-  assert.equal(catalog.models[0].slug, "jev-router");
+  assert.equal(catalog.models[0].slug, "laya-router");
 
   const response = await fetch(`http://127.0.0.1:${port}/responses`, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify({
-      model: "jev-router",
+      model: "laya-router",
       prompt_cache_key: "main",
       input: [
         { type: "additional_tools", role: "developer", tools: [{}] },
@@ -225,17 +225,17 @@ test("proxy preserves Codex auth, picker, routing, and native decision output", 
   assert.equal(readStatus(statusId).tier, "opus");
   assert.equal(readStatus(statusId).model, "gpt-5.6-sol");
   assert.equal(readStatus(statusId).prompt, "debug this race");
-  assert.equal(readStatus(statusId).jev.request.state.request, "debug this race");
+  assert.equal(readStatus(statusId).laya.request.state.request, "debug this race");
   assert.equal(readStatus(statusId).history.length, 1);
   assert.equal(readStatus(statusId).metrics.reasoningRequired, 0.91);
-  assert(response.indexOf("response.created") < response.indexOf("[Jev] routed this turn"));
-  assert(response.indexOf("[Jev] routed this turn") < response.indexOf("response.completed"));
+  assert(response.indexOf("response.created") < response.indexOf("[Laya] routed this turn"));
+  assert(response.indexOf("[Laya] routed this turn") < response.indexOf("response.completed"));
 
   await fetch(`http://127.0.0.1:${port}/responses`, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify({
-      model: "jev-router",
+      model: "laya-router",
       input: [
         { type: "additional_tools", role: "developer", tools: [{}] },
         { role: "user", content: "Generate a concise, single-line task title of at most 36 characters" },
@@ -254,9 +254,9 @@ test("proxy preserves Codex auth, picker, routing, and native decision output", 
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify({
-      model: "jev-router",
+      model: "laya-router",
       prompt_cache_key: "main",
-      input: [{ role: "user", content: [{ type: "input_text", text: "$jev-explain" }] }],
+      input: [{ role: "user", content: [{ type: "input_text", text: "$laya-explain" }] }],
     }),
   });
   assert.equal(routeCalls, 1);

@@ -22,7 +22,7 @@ const status = readStatus(input.session_id);
 const dir = (input.workspace?.current_dir ?? input.cwd ?? "").split(/[\\/]/).pop();
 const pct = Math.round(input.context_window?.used_percentage ?? 0);
 
-let routed = `${DIM}jev: waiting for first prompt${RESET}`;
+let routed = `${DIM}laya: waiting for first prompt${RESET}`;
 if (status?.manual) {
   // The user picked this model with /model, so show their choice rather than a tier.
   routed = `${DIM}⏸ manual${RESET} ${input.model?.display_name ?? ""}`.trimEnd();
@@ -33,8 +33,8 @@ if (status?.manual) {
   // stays short and the interesting case explains itself.
   const held =
     status.reason &&
-    status.reason !== "jev" &&
-    status.reason !== "jev/no-change" &&
+    status.reason !== "laya" &&
+    status.reason !== "laya/no-change" &&
     !status.reason.includes("override");
   const why = held ? ` ${DIM}(${status.reason.split("/")[0]})${RESET}` : "";
   routed = `${color}${status.model ?? status.tier}${RESET}${p}${why}`;
